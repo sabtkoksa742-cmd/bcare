@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: carenewservir1
+    env: node
+    plan: free
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server build
+    startCommand: pnpm --filter @workspace/api-server start
+    envVars:
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true

