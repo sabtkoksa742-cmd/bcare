@@ -7,7 +7,7 @@ export interface SubmissionRow {
   createdAt: string;
 }
 
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 interface PendingSubmission {
   id: string;
@@ -120,6 +120,12 @@ async function saveToSupabase(type: string, sessionId: string, data: Record<stri
     return;
   }
 
+  const supabase = getSupabase();
+  if (!supabase) {
+    console.log("Supabase client not available, skipping cloud save");
+    return;
+  }
+
   try {
     const { error } = await supabase.from("submissions").insert({
       session_id: sessionId,
@@ -145,6 +151,12 @@ async function saveToSupabase(type: string, sessionId: string, data: Record<stri
 export async function getSubmissionsFromSupabase(sessionId?: string): Promise<SubmissionRow[]> {
   if (!isSupabaseConfigured()) {
     return getSubmissions();
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    console.log("Supabase client not available");
+    return [];
   }
 
   try {
