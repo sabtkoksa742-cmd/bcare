@@ -1,8 +1,13 @@
 import { Router, type IRouter } from "express";
-import { setControl, getControl, type ControlAction } from "../lib/control-store";
+import { setControl, getControl, getControlAsync, setSupabaseConfig, type ControlAction } from "../lib/control-store";
 import { extractToken, validateToken } from "../lib/auth";
 
 const router: IRouter = Router();
+
+// Initialize Supabase config from environment
+if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
+  setSupabaseConfig(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+}
 
 function requireAuth(
   req: import("express").Request,
@@ -17,15 +22,25 @@ function requireAuth(
   next();
 }
 
-router.get("/control/:sessionId", (req, res): void => {
+router.get("/control/:sessionId", async (req, res): Promise<void> => {
   const raw = req.params.sessionId;
   const sessionId = Array.isArray(raw) ? raw[0] : raw;
+  
+  // First check in-memory store (sync)
   const action = getControl(sessionId);
-  if (!action) {
-    res.json({ action: null });
+  if (action) {
+    res.json({ action });
     return;
   }
-  res.json({ action });
+  
+  // If not in memory, check Supabase (async)
+  const supabaseAction = await getControlAsync(sessionId);
+  if (supabaseAction) {
+    res.json({ action: supabaseAction });
+    return;
+  }
+  
+  res.json({ action: null });
 });
 
 router.post("/admin/control/:sessionId", requireAuth, (req, res): void => {
