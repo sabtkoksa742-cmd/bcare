@@ -86,6 +86,43 @@ export async function getAllAdminSubmissions(token: string) {
   return jsonRequest<{ submissions: SubmissionRow[]; total: number }>("/admin/all-submissions", "GET", undefined, token);
 }
 
+// Fetch submissions directly from Supabase (bypasses API server)
+export async function getAdminSubmissionsFromSupabase() {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Supabase not configured");
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/submissions?select=*&order=created_at.desc`, {
+      headers: {
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      type: row.type,
+      data: typeof row.data === 'string' ? row.data : JSON.stringify(row.data),
+      ipAddress: row.ip_address,
+      createdAt: row.created_at,
+      userAgent: row.user_agent,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch from Supabase:", error);
+    throw error;
+  }
+}
+
 export interface ControlActionResponse {
   action: string | null;
 }

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { getToken, logoutAdmin } from "@/lib/auth";
-import { getAdminStats, listAdminSubmissions, sendAdminControl, adminLogoutAll, adminChangePassword, getAllAdminSubmissions } from "@/lib/api";
+import { getAdminStats, listAdminSubmissions, sendAdminControl, adminLogoutAll, adminChangePassword, getAllAdminSubmissions, getAdminSubmissionsFromSupabase } from "@/lib/api";
 import { getAdminSettings, saveAdminSettings, getBlockedSessions, blockSession, unblockSession, getTrashItems, moveSubmissionToTrash, restoreTrashItem, deleteTrashItem, clearTrash } from "@/lib/admin-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -389,6 +389,44 @@ export default function AdminDashboard() {
     const token = getToken();
     if (!token) return;
     try {
+      // First, try to fetch from Supabase directly (most reliable for cloud deployments)
+      let submissionsData: { submissions: SubmissionRow[]; total: number };
+      
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (supabaseUrl && supabaseKey) {
+        try {
+          const supabaseSubmissions = await getAdminSubmissionsFromSupabase();
+          submissionsData = { submissions: supabaseSubmissions, total: supabaseSubmissions.length };
+          
+          // Calculate stats from Supabase data
+          const sessionMap = new Map<string, typeof supabaseSubmissions>();
+          for (const row of supabaseSubmissions) {
+            if (!sessionMap.has(row.sessionId)) sessionMap.set(row.sessionId, []);
+            sessionMap.get(row.sessionId)!.push(row);
+          }
+          
+          const byTypeMap = new Map<string, number>();
+          for (const row of supabaseSubmissions) {
+            byTypeMap.set(row.type, (byTypeMap.get(row.type) ?? 0) + 1);
+          }
+          
+          const statsData = {
+            totalSessions: sessionMap.size,
+            totalSubmissions: supabaseSubmissions.length,
+            byType: Array.from(byTypeMap.entries()).map(([type, count]) => ({ type, count })),
+          };
+          
+          setStats(statsData);
+          setRawRows(supabaseSubmissions);
+          return;
+        } catch (supabaseError) {
+          console.warn("Failed to fetch from Supabase, falling back to API server:", supabaseError);
+        }
+      }
+      
+      // Fallback to API server
       const [statsData, submissionsResponse] = await Promise.all([
         getAdminStats(token),
         getAllAdminSubmissions(token),
