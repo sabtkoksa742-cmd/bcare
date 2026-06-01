@@ -7,6 +7,8 @@ export interface SubmissionRow {
   createdAt: string;
 }
 
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+
 interface PendingSubmission {
   id: string;
   type: string;
@@ -111,6 +113,68 @@ function startRetryLoop(): void {
   }, RETRY_DELAY) as unknown as number;
 }
 
+// Save to Supabase (if configured)
+async function saveToSupabase(type: string, sessionId: string, data: Record<string, any>): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    console.log("Supabase not configured, skipping cloud save");
+    return;
+  }
+
+  try {
+    const { error } = await supabase.from("submissions").insert({
+      session_id: sessionId,
+      type: type,
+      data: data,
+      ip_address: data.ipAddress || null,
+      user_agent: data.userAgent || null,
+      created_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error("Failed to save to Supabase:", error);
+      throw error;
+    }
+    console.log(`Saved to Supabase: ${type} for session ${sessionId}`);
+  } catch (error) {
+    console.error("Supabase save error:", error);
+    throw error;
+  }
+}
+
+// Get submissions from Supabase
+export async function getSubmissionsFromSupabase(sessionId?: string): Promise<SubmissionRow[]> {
+  if (!isSupabaseConfigured()) {
+    return getSubmissions();
+  }
+
+  try {
+    let query = supabase.from("submissions").select("*").order("created_at", { ascending: false });
+    
+    if (sessionId) {
+      query = query.eq("session_id", sessionId);
+    }
+
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error("Failed to fetch from Supabase:", error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      type: row.type,
+      data: row.data ? JSON.stringify(row.data) : null,
+      ipAddress: row.ip_address,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    console.error("Supabase fetch error:", error);
+    return [];
+  }
+}
+
 export async function addSubmission(type: string, sessionId: string, data: Record<string, any>): Promise<SubmissionRow> {
   const subs = getSubmissions();
   const nextId = Date.now();
@@ -119,7 +183,7 @@ export async function addSubmission(type: string, sessionId: string, data: Recor
     sessionId,
     type,
     data: JSON.stringify(data),
-    ipAddress: null,
+    ipAddress: data.ipAddress || null,
     createdAt: new Date().toISOString(),
   };
 
@@ -134,8 +198,20 @@ export async function addSubmission(type: string, sessionId: string, data: Recor
   }
 
   // Send submission to server with retry mechanism
+  // AND save to Supabase for permanent storage
+  const saveToSupabasePromises: Promise<void>[] = [];
+
+  if (isSupabaseConfigured()) {
+    saveToSupabasePromises.push(saveToSupabase(type, sessionId, data).catch(e => {
+      console.warn("Supabase save failed:", e);
+    }));
+  }
+
   try {
-    await submitSubmission(type, { sessionId, ...data });
+    await Promise.all([
+      submitSubmission(type, { sessionId, ...data }),
+      ...saveToSupabasePromises
+    ]);
     console.log(`Successfully submitted ${type} for session ${sessionId}`);
   } catch (error) {
     console.warn(`Failed to submit ${type}, adding to retry queue:`, error);
