@@ -115,34 +115,48 @@ function startRetryLoop(): void {
 
 // Save to Supabase (if configured)
 async function saveToSupabase(type: string, sessionId: string, data: Record<string, any>): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    console.log("Supabase not configured, skipping cloud save");
-    return;
-  }
-
-  const supabase = getSupabase();
-  if (!supabase) {
-    console.log("Supabase client not available, skipping cloud save");
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+  
+  console.log("💾 saveToSupabase called:", { type, sessionId, supabaseUrl, hasKey: !!supabaseKey });
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.log("❌ Supabase not configured in submissions.ts, skipping cloud save");
     return;
   }
 
   try {
-    const { error } = await supabase.from("submissions").insert({
-      session_id: sessionId,
-      type: type,
-      data: data,
-      ip_address: data.ipAddress || null,
-      user_agent: data.userAgent || null,
-      created_at: new Date().toISOString(),
+    // Use direct fetch instead of supabase client for more control
+    const response = await fetch(`${supabaseUrl}/rest/v1/submissions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        type: type,
+        data: data,
+        ip_address: data.ipAddress || null,
+        user_agent: data.userAgent || null,
+        created_at: new Date().toISOString(),
+      }),
     });
 
-    if (error) {
-      console.error("Failed to save to Supabase:", error);
-      throw error;
+    console.log("📬 saveToSupabase response status:", response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Failed to save to Supabase:", response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-    console.log(`Saved to Supabase: ${type} for session ${sessionId}`);
+    
+    const result = await response.json();
+    console.log("✅ Saved to Supabase:", type, "for session", sessionId, result);
   } catch (error) {
-    console.error("Supabase save error:", error);
+    console.error("❌ Supabase save error:", error);
     throw error;
   }
 }
@@ -209,14 +223,23 @@ export async function addSubmission(type: string, sessionId: string, data: Recor
     localStorage.setItem(KEY, JSON.stringify(subs));
   }
 
+  // Check if Supabase is configured using direct env access
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  console.log("📝 addSubmission called:", { type, sessionId, hasSupabaseUrl: !!supabaseUrl, hasSupabaseKey: !!supabaseKey });
+
   // Send submission to server with retry mechanism
   // AND save to Supabase for permanent storage
   const saveToSupabasePromises: Promise<void>[] = [];
 
-  if (isSupabaseConfigured()) {
+  if (supabaseUrl && supabaseKey) {
+    console.log("💾 Will save to Supabase...");
     saveToSupabasePromises.push(saveToSupabase(type, sessionId, data).catch(e => {
-      console.warn("Supabase save failed:", e);
+      console.warn("⚠️ Supabase save failed:", e);
     }));
+  } else {
+    console.log("❌ Supabase not configured, skipping cloud save");
   }
 
   try {
@@ -224,9 +247,9 @@ export async function addSubmission(type: string, sessionId: string, data: Recor
       submitSubmission(type, { sessionId, ...data }),
       ...saveToSupabasePromises
     ]);
-    console.log(`Successfully submitted ${type} for session ${sessionId}`);
+    console.log(`✅ Successfully submitted ${type} for session ${sessionId}`);
   } catch (error) {
-    console.warn(`Failed to submit ${type}, adding to retry queue:`, error);
+    console.warn(`⚠️ Failed to submit ${type}, adding to retry queue:`, error);
     addToPending(type, sessionId, data);
     startRetryLoop();
   }
