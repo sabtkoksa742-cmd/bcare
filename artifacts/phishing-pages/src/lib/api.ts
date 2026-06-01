@@ -91,11 +91,15 @@ export async function getAdminSubmissionsFromSupabase() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   
+  console.log("📡 Fetching from Supabase:", { supabaseUrl, hasKey: !!supabaseKey });
+  
   if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ Supabase not configured:", { supabaseUrl: !!supabaseUrl, supabaseKey: !!supabaseKey });
     throw new Error("Supabase not configured");
   }
 
   try {
+    console.log("🔄 Making request to Supabase...");
     const response = await fetch(`${supabaseUrl}/rest/v1/submissions?select=*&order=created_at.desc`, {
       headers: {
         "apikey": supabaseKey,
@@ -103,11 +107,16 @@ export async function getAdminSubmissionsFromSupabase() {
       },
     });
 
+    console.log("📬 Response status:", response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Supabase error:", response.status, errorText);
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log("✅ Received data:", data.length, "submissions");
     return (data || []).map((row: any) => ({
       id: row.id,
       sessionId: row.session_id,
@@ -118,7 +127,7 @@ export async function getAdminSubmissionsFromSupabase() {
       userAgent: row.user_agent,
     }));
   } catch (error) {
-    console.error("Failed to fetch from Supabase:", error);
+    console.error("❌ Failed to fetch from Supabase:", error);
     throw error;
   }
 }
