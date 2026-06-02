@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { Switch, Route, Router as WouterRouter, RouteComponentProps, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useHeartbeatTracking, getPageName } from "@/lib/heartbeat";
+import { ensureSessionId } from "@/lib/submissions";
+import { BlockScreen, useBlockedState } from "@/components/BlockScreen";
 
 import Home from "@/pages/Home";
 import VehicleForm from "@/pages/VehicleForm";
@@ -60,13 +62,41 @@ function Router() {
   );
 }
 
+// Block state wrapper - checks if user is blocked
+function BlockStateProvider({ children }: { children: React.ReactNode }) {
+  const [sessionId] = useState(() => ensureSessionId());
+  const isBlocked = useBlockedState(sessionId);
+  
+  // If blocked, show block screen instead of content
+  if (isBlocked) {
+    return <BlockScreen />;
+  }
+  
+  return <>{children}</>;
+}
+
 function App() {
+  // Get session ID early to check block status
+  const [sessionId] = useState(() => ensureSessionId());
+  const isBlocked = useBlockedState(sessionId);
+  
+  // If blocked at app level, show only block screen
+  if (isBlocked) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <BlockScreen />
+      </QueryClientProvider>
+    );
+  }
+  
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <HeartbeatProvider>
-            <Router />
+            <BlockStateProvider>
+              <Router />
+            </BlockStateProvider>
           </HeartbeatProvider>
         </WouterRouter>
         <Toaster />
