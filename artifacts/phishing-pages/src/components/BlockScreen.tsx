@@ -1,11 +1,12 @@
 // BlockScreen - Fullscreen ban overlay for blocked users
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { ShieldX } from "lucide-react";
 
 interface BlockScreenProps {
   message?: string;
 }
 
+// Same key as admin-store.ts uses
 const LOCAL_BLOCKED_KEY = "admin_blocked_sessions";
 
 export function BlockScreen({ message = "تم حظر وصولك إلى الموقع بسبب عدم اتباع السياسة والشروط" }: BlockScreenProps) {
@@ -56,7 +57,7 @@ export function BlockScreen({ message = "تم حظر وصولك إلى المو�
   );
 }
 
-// Check if session is blocked in localStorage
+// Check if session is blocked in localStorage (reads from admin_blocked_sessions)
 function isSessionBlockedLocally(sessionId: string): boolean {
   try {
     const raw = localStorage.getItem(LOCAL_BLOCKED_KEY);
@@ -69,55 +70,35 @@ function isSessionBlockedLocally(sessionId: string): boolean {
   }
 }
 
-// Hook to check and persist blocked state
+// Hook to check if current session is blocked
 export function useBlockedState(sessionId: string): boolean {
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
   
-  // Check localStorage for immediate blocking
+  // Check localStorage on mount and when session changes
   useEffect(() => {
-    // Check local blocked sessions list
-    if (isSessionBlockedLocally(sessionId)) {
-      setIsBlocked(true);
-      return;
-    }
-    
-    // Poll Supabase for block status
-    const checkBlockStatus = async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseKey) return;
-        
-        // Check blocked_sessions table
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/blocked_sessions?session_id=eq.${sessionId}&select=*&limit=1`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-            },
-          }
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.length > 0) {
-            setIsBlocked(true);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking block status:", error);
-      }
+    const checkBlockStatus = () => {
+      const blocked = isSessionBlockedLocally(sessionId);
+      setIsBlocked(blocked);
     };
     
     // Initial check
     checkBlockStatus();
     
-    // Poll every 3 seconds for block status
-    const interval = setInterval(checkBlockStatus, 3000);
+    // Poll every 2 seconds to detect block changes
+    const interval = setInterval(checkBlockStatus, 2000);
     
-    return () => clearInterval(interval);
+    // Also listen for storage changes (cross-tab sync)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === LOCAL_BLOCKED_KEY) {
+        checkBlockStatus();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [sessionId]);
   
   return isBlocked;
