@@ -28,8 +28,8 @@ import {
   getSecondsSincePing,
   getPageName,
   getLatestPing,
-  type PingData 
 } from "@/lib/heartbeat";
+import type { PingData } from "@/lib/heartbeat";
 
 interface SubmissionRow {
   id: number;

