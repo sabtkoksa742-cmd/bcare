@@ -1,8 +1,9 @@
-import type { ComponentType } from "react";
-import { Switch, Route, Router as WouterRouter, RouteComponentProps } from "wouter";
+import type { ComponentType, useEffect, useState } from "react";
+import { Switch, Route, Router as WouterRouter, RouteComponentProps, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useHeartbeatTracking, getPageName } from "@/lib/heartbeat";
 
 import Home from "@/pages/Home";
 import VehicleForm from "@/pages/VehicleForm";
@@ -19,6 +20,20 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
+
+// Heartbeat tracking wrapper
+function HeartbeatProvider({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const { updatePage } = useHeartbeatTracking(location);
+  
+  // Update page tracking when location changes
+  useEffect(() => {
+    const pageName = getPageName(location);
+    updatePage(pageName);
+  }, [location, updatePage]);
+  
+  return <>{children}</>;
+}
 
 function route(Component: ComponentType) {
   return (_props: RouteComponentProps) => <Component />;
@@ -49,7 +64,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <HeartbeatProvider>
+            <Router />
+          </HeartbeatProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
