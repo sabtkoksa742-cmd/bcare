@@ -218,14 +218,14 @@ function StatCard({ label, value, icon, color, onClick }: { label: string; value
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className={`rounded-3xl border bg-white p-4 text-right shadow-sm transition ${onClick ? "hover:shadow-md cursor-pointer active:scale-[0.98]" : "cursor-default"}`}
+      className={`rounded-2xl sm:rounded-3xl border bg-white p-3 sm:p-4 text-right shadow-sm transition ${onClick ? "hover:shadow-md cursor-pointer active:scale-[0.98]" : "cursor-default"}`}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${color}`}>{icon}</div>
-        <span className="text-3xl font-bold text-slate-900">{value}</span>
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
+        <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center ${color}`}>{icon}</div>
+        <span className="text-2xl sm:text-3xl font-bold text-slate-900">{value}</span>
       </div>
-      <p className="text-xs text-slate-500">{label}</p>
-      {onClick && <p className="text-xs text-blue-500 mt-2">انقر للتفاصيل</p>}
+      <p className="text-[10px] sm:text-xs text-slate-500">{label}</p>
+      {onClick && <p className="text-[10px] sm:text-xs text-blue-500 mt-1 sm:mt-2">انقر للتفاصيل</p>}
     </button>
   );
 }
@@ -921,50 +921,50 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-100" dir="rtl">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-2 text-right">
-              <div className="flex flex-wrap items-center gap-2 text-lg font-bold text-slate-900">
-                <ShieldCheck className="h-5 w-5 text-blue-600" />
+        <div className="mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3">
+          <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1 text-right">
+              <div className="flex flex-wrap items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
+                <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 لوحة التحكم الإدارية
               </div>
-              <p className="text-sm text-slate-500">تواصل مع بيانات الجلسات من أي مكان، وأدر المستخدمين بسهولة.</p>
+              <p className="text-[10px] sm:text-sm text-slate-500">تواصل مع بيانات الجلسات من أي مكان، وأدر المستخدمين بسهولة.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 justify-end">
-              <Button size="sm" variant="outline" onClick={fetchData}>تحديث</Button>
-              <Button size="sm" onClick={() => setSettingsOpen(true)}>إعدادات العروض</Button>
-              <Button size="sm" variant="secondary" onClick={() => setPasswordOpen(true)}>تغيير كلمة المرور</Button>
-              <Button size="sm" variant="destructive" onClick={handleLogoutAll}>خروج من كل الأجهزة</Button>
-              <Button size="sm" variant="ghost" onClick={handleLogout}>خروج</Button>
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={fetchData} className="text-[10px] sm:text-xs">تحديث</Button>
+              <Button size="sm" onClick={() => setSettingsOpen(true)} className="text-[10px] sm:text-xs">العروض</Button>
+              <Button size="sm" variant="secondary" onClick={() => setPasswordOpen(true)} className="text-[10px] sm:text-xs hidden sm:flex">كلمة المرور</Button>
+              <Button size="sm" variant="destructive" onClick={handleLogoutAll} className="text-[10px] sm:text-xs">خروج</Button>
+              <Button size="sm" variant="ghost" onClick={handleLogout} className="text-[10px] sm:text-xs hidden md:flex">خروج</Button>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 text-right">
-              <div className="text-xs text-slate-500">الجلسات</div>
-              <div className="mt-2 text-3xl font-bold text-slate-900">{sessionCount}</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-right">
+              <div className="text-[10px] sm:text-xs text-slate-500">الجلسات</div>
+              <div className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900">{sessionCount}</div>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 text-right">
-              <div className="text-xs text-slate-500">الإدخالات</div>
-              <div className="mt-2 text-3xl font-bold text-slate-900">{stats?.totalSubmissions ?? 0}</div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-right">
+              <div className="text-[10px] sm:text-xs text-slate-500">الإدخالات</div>
+              <div className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900">{stats?.totalSubmissions ?? 0}</div>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 text-right">
-              <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-right col-span-2 sm:col-span-1">
+              <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-500">
                 <span>محظور / مهملات</span>
-                <Badge className="bg-slate-100 text-slate-700">{blockedCount}</Badge>
+                <Badge className="bg-slate-100 text-slate-700 text-[10px]">{blockedCount}</Badge>
               </div>
-              <div className="mt-2 text-3xl font-bold text-slate-900">{trashedCount}</div>
+              <div className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900">{trashedCount}</div>
             </div>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        <div className="grid gap-3 sm:grid-cols-4">
-          <StatCard label="البطاقات" value={cardCount} icon={<CreditCard className="w-4 h-4" />} color="bg-red-100 text-red-600" />
-          <StatCard label="OTP" value={otpCount} icon={<KeyRound className="w-4 h-4" />} color="bg-orange-100 text-orange-600" />
-          <StatCard label="ATM" value={atmCount} icon={<Banknote className="w-4 h-4" />} color="bg-yellow-100 text-yellow-700" />
-          <StatCard label="قيد المتابعة" value={pendingCount} icon={<Clock className="w-4 h-4" />} color="bg-blue-100 text-blue-600" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+          <StatCard label="البطاقات" value={cardCount} icon={<CreditCard className="w-3 h-3 sm:w-4 sm:h-4" />} color="bg-red-100 text-red-600" />
+          <StatCard label="OTP" value={otpCount} icon={<KeyRound className="w-3 h-3 sm:w-4 sm:h-4" />} color="bg-orange-100 text-orange-600" />
+          <StatCard label="ATM" value={atmCount} icon={<Banknote className="w-3 h-3 sm:w-4 sm:h-4" />} color="bg-yellow-100 text-yellow-700" />
+          <StatCard label="قيد المتابعة" value={pendingCount} icon={<Clock className="w-3 h-3 sm:w-4 sm:h-4" />} color="bg-blue-100 text-blue-600" />
         </div>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-4">
