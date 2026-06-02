@@ -24,7 +24,6 @@ import {
 import { 
   useHeartbeatTracking, 
   formatLiveTime, 
-  isSessionActive, 
   getSecondsSincePing,
   getPageName,
   getLatestPing,
@@ -453,7 +452,6 @@ function SessionBox({
   const liveActivityText = useLiveCounter(latestActivity);
 
   // Check if session is active based on ping (within 10 seconds)
-  const isSessionActive = lastPing ? isSessionActive(lastPing) : false;
 
   const handleControl = async (action: string) => {
     setLoadingAction(action);

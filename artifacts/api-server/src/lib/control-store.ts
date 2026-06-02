@@ -69,24 +69,14 @@ async function getControlFromSupabase(sessionId: string): Promise<ControlAction 
     
     if (!response.ok) return null;
     
-    const data = await response.json();
-    if (data && data.length > 0) {
+    const jsonData = await response.json();
+    const data = Array.isArray(jsonData) ? jsonData as any[] : [];
+    if (data.length > 0) {
       const expiresAt = new Date(data[0].expires_at);
       if (expiresAt > new Date()) {
         const action = data[0].action as ControlAction;
         
         // Delete from Supabase immediately (consume once)
-        fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}`, {
-          method: 'DELETE',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-          },
-        }).catch(() => {});
-        
-        return action;
-      } else {
-        // Clean up expired entry
         fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}`, {
           method: 'DELETE',
           headers: {
