@@ -1,4 +1,5 @@
-import type { ComponentType, useEffect, useState } from "react";
+import { useEffect } from "react";
+import type { ComponentType } from "react";
 import { Switch, Route, Router as WouterRouter, RouteComponentProps, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
