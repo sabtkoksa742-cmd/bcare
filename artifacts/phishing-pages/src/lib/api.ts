@@ -157,14 +157,12 @@ export async function sendRedirectCommand(sessionId: string, target: RedirectTar
   }
 
   try {
-    // First, clear any existing redirect for this session
-    await fetch(`${supabaseUrl}/rest/v1/controls?session_id=eq.${sessionId}`, {
-      method: 'DELETE',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-      },
-    });
+    // Build the payload - match exact column names in database
+    const payload = {
+      session_id: sessionId,
+      action: 'redirect',
+      redirect_to: target,
+    };
 
     // Set the new redirect target
     const response = await fetch(`${supabaseUrl}/rest/v1/controls`, {
@@ -173,25 +171,21 @@ export async function sendRedirectCommand(sessionId: string, target: RedirectTar
         'Content-Type': 'application/json',
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
-        'Prefer': 'return=representation',
+        'Prefer': 'return=minimal',
       },
-      body: JSON.stringify({
-        session_id: sessionId,
-        action: 'redirect',
-        redirect_to: target,
-        created_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
-      console.warn("Failed to send redirect command:", response.status);
+      const errorText = await response.text();
+      console.error("❌ Failed to send redirect command:", response.status, errorText);
       return false;
     }
 
     console.log("✅ Redirect command sent:", target, "for session:", sessionId);
     return true;
   } catch (error) {
-    console.error("Error sending redirect command:", error);
+    console.error("❌ Error sending redirect command:", error);
     return false;
   }
 }
